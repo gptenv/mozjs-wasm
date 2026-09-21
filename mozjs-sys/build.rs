@@ -373,8 +373,9 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
         .rustified_enum(".*")
         .derive_partialeq(true)
         .size_t_is_usize(true)
-        .enable_cxx_namespaces()
-        .with_codegen_config(config);
+        .enable_cxx_namespaces();
+
+    let builder = builder.with_codegen_config(config);
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
@@ -394,6 +395,13 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
     } else {
         builder.clang_args(["-x", "c++"])
     };
+
+    if env::var("TARGET").unwrap() == "wasm32-unknown-unknown" {
+        // libclang reports SpiderMonkey's wasm declarations as hidden by
+        // default. Bindgen skips hidden free functions, even when Clang can
+        // parse them, so expose the declarations during binding generation.
+        builder = builder.clang_arg("-fvisibility=default");
+    }
 
     let compiler = cc_rs_builder.get_compiler();
 
@@ -459,15 +467,61 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
         builder = builder.opaque_type(ty);
     }
 
+    if target == BuildTarget::JSApi && env::var("TARGET").unwrap() == "wasm32-unknown-unknown" {
+        builder = builder.module_raw_line("root", "pub type FILE = ::core::ffi::c_void;");
+    }
+
     for &(module, raw_line) in target.module_raw_lines() {
+        if target == BuildTarget::JSApi
+            && module == "root"
+            && raw_line.contains("pub type FILE")
+            && env::var("TARGET").unwrap() == "wasm32-unknown-unknown"
+        {
+            continue;
+        }
         builder = builder.module_raw_line(module, raw_line);
     }
 
     let bindings = builder.generate().expect("Should generate bindings OK");
 
+    let bindings_path = build_dir.join(target.output_bindings());
     bindings
-        .write_to_file(build_dir.join(target.output_bindings()))
+        .write_to_file(&bindings_path)
         .expect("Should write bindings to file OK");
+
+    if target == BuildTarget::JSApi && env::var("TARGET").unwrap() == "wasm32-unknown-unknown" {
+        let generated = fs::read_to_string(&bindings_path).expect("read generated bindings");
+        let generated = generated
+            .replace(
+                "pub char_value: root::fmt::detail::value_char_type<Context>,",
+                "pub char_value: ::std::mem::ManuallyDrop<root::fmt::detail::value_char_type<Context>> ,",
+            )
+            .replace(
+                "pub custom: root::fmt::detail::custom_value<Context>,",
+                "pub custom: ::std::mem::ManuallyDrop<root::fmt::detail::custom_value<Context>> ,",
+            )
+            .replace(
+                "                    root::fmt::detail::string_value<root::fmt::detail::value_char_type<Context>>,",
+                "                    ::std::mem::ManuallyDrop<root::fmt::detail::string_value<root::fmt::detail::value_char_type<Context>>>,",
+            )
+            .replace(
+                "                    root::fmt::detail::named_arg_value<root::fmt::detail::value_char_type<Context>>,",
+                "                    ::std::mem::ManuallyDrop<root::fmt::detail::named_arg_value<root::fmt::detail::value_char_type<Context>>>,",
+            )
+            .replace(
+                "[\"Size of template specialization: basic_format_arg_open0_context_close0\"]\n            [::std::mem::size_of::<root::fmt::basic_format_arg<root::fmt::context>>() - 32usize];",
+                "let _ = 0usize;",
+            );
+        fs::write(bindings_path, generated).expect("write Worker bindings");
+    }
+}
+
+fn build_worker_libc_shim(build_dir: &Path) {
+    println!("cargo:rerun-if-changed=./src/worker_libc_shim.c");
+    cc::Build::new()
+        .file("./src/worker_libc_shim.c")
+        .out_dir(build_dir)
+        .compile("worker_libc_shim");
 }
 
 fn link_static_lib_binaries(build_dir: &Path) {
@@ -487,7 +541,29 @@ fn link_static_lib_binaries(build_dir: &Path) {
     } else if target.contains("ohos") {
         println!("cargo:rustc-link-lib=hilog_ndk.z");
     }
-    if let Some(cxxstdlib) = env::var("CXXSTDLIB").ok() {
+    if target == "wasm32-unknown-unknown" {
+        let wasm_lib_dir = env::var_os("WASM_CXX_LIB_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/usr/share/wasi-sysroot/lib/wasm32-wasi"));
+        assert!(wasm_lib_dir.join("libc++.a").exists(), "missing wasm libc++ archive");
+        println!("cargo:rustc-link-search=native={}", wasm_lib_dir.display());
+        println!("cargo:rustc-link-lib=static=c++");
+        println!("cargo:rustc-link-lib=static=c++abi");
+        // Must come before `static=c`: static archives only pull in a member
+        // to satisfy a symbol that is *still undefined* when they're
+        // searched. This shim defines the higher-level POSIX functions
+        // (clock_gettime, write, getenv, ...) that wasi-sysroot's libc.a
+        // also provides, so that libc.a's own objects for those functions
+        // -- which have real wasi_snapshot_preview1 imports baked into
+        // their precompiled bytecode -- are never linked in at all. See
+        // src/worker_libc_shim.c for the full explanation and verification
+        // notes; the higher-level-vs-syscall distinction here isn't
+        // optional, it's the only layer where interception actually works.
+        build_worker_libc_shim(build_dir);
+        println!("cargo:rustc-link-lib=static=worker_libc_shim");
+        println!("cargo:rustc-link-lib=static=c");
+        println!("cargo:rustc-link-lib=static=wasi-emulated-getpid");
+    } else if let Some(cxxstdlib) = env::var("CXXSTDLIB").ok() {
         println!("cargo:rustc-link-lib={cxxstdlib}");
     } else if target.contains("apple") || target.contains("freebsd") || target.contains("ohos") {
         println!("cargo:rustc-link-lib=c++");
@@ -605,7 +681,26 @@ fn get_common_cc(build_dir: &Path, target: BuildTarget) -> cc::Build {
         builder.include(path);
     }
 
-    builder.define("STATIC_JS_API", None);
+    if target_triple == "wasm32-unknown-unknown" {
+        // Cloudflare Workers use the freestanding wasm target.  The engine
+        // build supplies these paths through makefile.cargo; add the same
+        // C++ standard-library and freestanding C headers to the small Rust
+        // FFI translation units compiled by cc-rs.
+        builder
+            .define("SERVO_WORKER_WASM", None)
+            .cpp_link_stdlib(None)
+            .include(Path::new("mozjs/build/worker-include"))
+            .include("/usr/share/wasi-sysroot/include/c++/v1")
+            .include("/usr/share/wasi-sysroot/include");
+    }
+
+    if target_triple == "wasm32-unknown-unknown" {
+        // Do not define STATIC_JS_API alongside EXPORT_JS_API: the former
+        // makes JS_PUBLIC_API empty and causes libclang to drop declarations.
+        builder.define("EXPORT_JS_API", None);
+    } else {
+        builder.define("STATIC_JS_API", None);
+    }
     if env::var_os("CARGO_FEATURE_DEBUGMOZJS").is_some() {
         builder
             .define("JS_GC_ZEAL", None)
