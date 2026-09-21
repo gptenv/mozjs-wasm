@@ -8,7 +8,7 @@
 
 #ifdef XP_WIN
 #  include "util/WindowsWrapper.h"
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
 // Nothing
 #elif defined(XP_DARWIN) || defined(DARWIN) || defined(XP_UNIX)
 #  include <pthread.h>
@@ -114,7 +114,7 @@ void* js::GetNativeStackBaseImpl() {
 #  endif
 }
 
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
 
 // Since we rearrange the layout for wasi via --stack-first flag for the linker
 // the final layout is: 0x00 | <- stack | data | heap -> |.

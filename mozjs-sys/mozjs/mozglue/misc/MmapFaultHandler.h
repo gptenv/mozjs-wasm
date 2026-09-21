@@ -32,7 +32,7 @@
 #  define MMAP_FAULT_HANDLER_BEGIN_BUFFER(buf, bufLen) {
 #  define MMAP_FAULT_HANDLER_CATCH(retval) }
 
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
 
 #  define MMAP_FAULT_HANDLER_BEGIN_HANDLE(fd) {
 #  define MMAP_FAULT_HANDLER_BEGIN_BUFFER(buf, bufLen) {

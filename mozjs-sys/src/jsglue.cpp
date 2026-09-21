@@ -904,6 +904,8 @@ void DeleteRootedObjectVector(JS::PersistentRootedObjectVector* v) { delete v; }
 // nothing needed here
 #elif defined(_MSC_VER)
 // nothing needed here
+#elif defined(SERVO_WORKER_WASM)
+// Cloudflare Workers do not expose allocator introspection.
 #else
 #  error "unsupported platform"
 #endif
@@ -924,6 +926,10 @@ static size_t MallocSizeOf(const void* aPtr) {
   return _msize((void*)aPtr);
 #elif defined(_MSC_VER)
   return _msize((void*)aPtr);
+#elif defined(SERVO_WORKER_WASM)
+  // The Worker allocator has no usable-size query.  Memory reporting is
+  // optional, so report zero rather than introducing a host-specific ABI.
+  return 0;
 #else
 #  error "unsupported platform"
 #endif
@@ -941,42 +947,43 @@ void InitializeMemoryReporter(WantToMeasure wtm) { gWantToMeasure = wtm; }
 
 // Expose templated functions for tracing
 
-void CallValueTracer(JSTracer* trc, JS::Heap<JS::Value>* valuep,
-                     const char* name) {
+extern "C" void CallValueTracer(JSTracer* trc, JS::Heap<JS::Value>* valuep,
+                                 const char* name) {
   JS::TraceEdge(trc, valuep, name);
 }
 
-void CallIdTracer(JSTracer* trc, JS::Heap<jsid>* idp, const char* name) {
+extern "C" void CallIdTracer(JSTracer* trc, JS::Heap<jsid>* idp,
+                              const char* name) {
   JS::TraceEdge(trc, idp, name);
 }
 
-void CallObjectTracer(JSTracer* trc, JS::Heap<JSObject*>* objp,
-                      const char* name) {
+extern "C" void CallObjectTracer(JSTracer* trc, JS::Heap<JSObject*>* objp,
+                                  const char* name) {
   JS::TraceEdge(trc, objp, name);
 }
 
-void CallStringTracer(JSTracer* trc, JS::Heap<JSString*>* strp,
-                      const char* name) {
+extern "C" void CallStringTracer(JSTracer* trc, JS::Heap<JSString*>* strp,
+                                  const char* name) {
   JS::TraceEdge(trc, strp, name);
 }
 
-void CallSymbolTracer(JSTracer* trc, JS::Heap<JS::Symbol*>* bip,
-                      const char* name) {
+extern "C" void CallSymbolTracer(JSTracer* trc, JS::Heap<JS::Symbol*>* bip,
+                                  const char* name) {
   JS::TraceEdge(trc, bip, name);
 }
 
-void CallBigIntTracer(JSTracer* trc, JS::Heap<JS::BigInt*>* bip,
-                      const char* name) {
+extern "C" void CallBigIntTracer(JSTracer* trc, JS::Heap<JS::BigInt*>* bip,
+                                  const char* name) {
   JS::TraceEdge(trc, bip, name);
 }
 
-void CallScriptTracer(JSTracer* trc, JS::Heap<JSScript*>* scriptp,
-                      const char* name) {
+extern "C" void CallScriptTracer(JSTracer* trc, JS::Heap<JSScript*>* scriptp,
+                                  const char* name) {
   JS::TraceEdge(trc, scriptp, name);
 }
 
-void CallFunctionTracer(JSTracer* trc, JS::Heap<JSFunction*>* funp,
-                        const char* name) {
+extern "C" void CallFunctionTracer(JSTracer* trc, JS::Heap<JSFunction*>* funp,
+                                    const char* name) {
   JS::TraceEdge(trc, funp, name);
 }
 
@@ -989,12 +996,44 @@ void CallObjectRootTracer(JSTracer* trc, JSObject** objp, const char* name) {
   JS::TraceRoot(trc, objp, name);
 }
 
-void CallValueRootTracer(JSTracer* trc, JS::Value* valp, const char* name) {
+extern "C" void CallValueRootTracer(JSTracer* trc, JS::Value* valp,
+                                     const char* name) {
   JS::TraceRoot(trc, valp, name);
 }
 
-void CallPropertyDescriptorTracer(JSTracer* trc, JS::PropertyDescriptor* desc) {
+extern "C" void CallPropertyDescriptorTracer(JSTracer* trc,
+                                              JS::PropertyDescriptor* desc) {
   desc->trace(trc);
+}
+
+extern "C" void Servo_JS_HeapObjectWriteBarriers(JSObject** objp,
+                                                  JSObject* prev,
+                                                  JSObject* next) {
+  JS::HeapObjectWriteBarriers(objp, prev, next);
+}
+extern "C" void Servo_JS_HeapStringWriteBarriers(JSString** strp,
+                                                  JSString* prev,
+                                                  JSString* next) {
+  JS::HeapStringWriteBarriers(strp, prev, next);
+}
+extern "C" void Servo_JS_HeapBigIntWriteBarriers(JS::BigInt** bip,
+                                                  JS::BigInt* prev,
+                                                  JS::BigInt* next) {
+  JS::HeapBigIntWriteBarriers(bip, prev, next);
+}
+extern "C" void Servo_JS_HeapScriptWriteBarriers(JSScript** scriptp,
+                                                  JSScript* prev,
+                                                  JSScript* next) {
+  JS::HeapScriptWriteBarriers(scriptp, prev, next);
+}
+extern "C" void Servo_JS_HeapValueWriteBarriers(JS::Value* valuep,
+                                                 const JS::Value* prev,
+                                                 const JS::Value* next) {
+  JS::HeapValueWriteBarriers(valuep, *prev, *next);
+}
+extern "C" void Servo_js_TraceValueArray(JSTracer* trc, size_t length,
+                                           JS::Value* elements) {
+  js::TraceValueArray(trc, length, elements);
 }
 
 bool IsDebugBuild() {

@@ -1,0 +1,18 @@
+/* Start from the distro libc++ configuration, then select a Worker-local
+ * pthread-shaped ABI. These are compile-time types only; the final Worker
+ * host layer will provide the small synchronization surface that is needed. */
+#include_next <__config_site>
+#undef _LIBCPP_HAS_THREADS
+#define _LIBCPP_HAS_THREADS 1
+#undef _LIBCPP_HAS_NO_THREADS
+#undef _LIBCPP_HAS_THREAD_API_PTHREAD
+#define _LIBCPP_HAS_THREAD_API_PTHREAD 1
+#undef _LIBCPP_HAS_THREAD_API_EXTERNAL
+#undef _LIBCPP_HAS_THREAD_API_WIN32
+#undef _LIBCPP_HAS_THREAD_API_C11
+#ifndef _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
+#define _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
+#endif
+#ifndef _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS
+#define _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS
+#endif

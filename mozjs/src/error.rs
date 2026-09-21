@@ -8,7 +8,6 @@
 
 use crate::context::JSContext;
 use crate::jsapi::{JSErrorFormatString, JSExnType, JS_ReportErrorNumberUTF8};
-use libc;
 use std::ffi::CStr;
 use std::{mem, os, ptr};
 
@@ -35,7 +34,7 @@ static mut RANGE_ERROR_FORMAT_STRING: JSErrorFormatString = JSErrorFormatString 
 /// See throw_js_error for info about error_number.
 unsafe extern "C" fn get_error_message(
     _user_ref: *mut os::raw::c_void,
-    error_number: libc::c_uint,
+    error_number: os::raw::c_uint,
 ) -> *const JSErrorFormatString {
     let num: JSExnType = mem::transmute(error_number);
     match num {

@@ -219,12 +219,24 @@ class PerfStats {
         TimeStamp::Now();
   }
 
+  static void AddRecordedTime(std::atomic<double>& total, double increment) {
+#ifdef SERVO_WORKER_WASM
+    // The wasm libc++ 13 headers predate floating-point atomic fetch_add.
+    double current = total.load(std::memory_order_relaxed);
+    while (!total.compare_exchange_weak(current, current + increment,
+                                        std::memory_order_relaxed)) {
+    }
+#else
+    total.fetch_add(increment, std::memory_order_relaxed);
+#endif
+  }
+
   static void RecordMeasurementEndInternal(Metric aMetric) {
     PerfStats* singleton = GetSingleton();
     auto idx = static_cast<MetricMask>(aMetric);
-    singleton->mRecordedTimes[idx].fetch_add(
-        (TimeStamp::Now() - singleton->mRecordedStarts[idx]).ToMilliseconds(),
-        std::memory_order_relaxed);
+    AddRecordedTime(singleton->mRecordedTimes[idx],
+                    (TimeStamp::Now() - singleton->mRecordedStarts[idx])
+                        .ToMilliseconds());
     ++singleton->mRecordedCounts[idx];
   }
 
@@ -232,8 +244,8 @@ class PerfStats {
                                         TimeDuration aDuration) {
     PerfStats* singleton = GetSingleton();
     auto idx = static_cast<MetricMask>(aMetric);
-    singleton->mRecordedTimes[idx].fetch_add(aDuration.ToMilliseconds(),
-                                             std::memory_order_relaxed);
+    AddRecordedTime(singleton->mRecordedTimes[idx],
+                    aDuration.ToMilliseconds());
     ++singleton->mRecordedCounts[idx];
   }
 
@@ -241,8 +253,7 @@ class PerfStats {
                                                MetricCounter aIncrementAmount) {
     PerfStats* singleton = GetSingleton();
     auto idx = static_cast<MetricMask>(aMetric);
-    singleton->mRecordedTimes[idx].fetch_add(double(aIncrementAmount),
-                                             std::memory_order_relaxed);
+    AddRecordedTime(singleton->mRecordedTimes[idx], double(aIncrementAmount));
     ++singleton->mRecordedCounts[idx];
   }
 

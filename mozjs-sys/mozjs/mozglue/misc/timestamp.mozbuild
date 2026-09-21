@@ -15,6 +15,10 @@ elif CONFIG["OS_TARGET"] == "Darwin":
     SOURCES += [
         "/mozglue/misc/TimeStamp_darwin.cpp",
     ]
+elif CONFIG["OS_TARGET"] == "Unknown":
+    SOURCES += [
+        "/mozglue/misc/TimeStamp_worker.cpp",
+    ]
 elif CONFIG["HAVE_CLOCK_MONOTONIC"]:
     SOURCES += [
         "/mozglue/misc/TimeStamp_posix.cpp",

@@ -13,6 +13,10 @@
 #include "js/Utility.h"
 #include "vm/JSContext.h"
 
+#if defined(SERVO_WORKER_WASM) && !defined(__wasi__)
+#  define SERVO_MEMORY_WASM 1
+#endif
+
 #ifdef MOZ_MEMORY
 #  include "mozmemory_stall.h"
 #endif
@@ -35,7 +39,7 @@
 #    include <sys/syscall.h>
 #  endif
 
-#  if !defined(__wasi__)
+#  if !defined(__wasi__) && !defined(SERVO_MEMORY_WASM)
 #    include <sys/mman.h>
 #    include <sys/resource.h>
 #    include <sys/stat.h>
@@ -174,7 +178,7 @@ enum class PageAccess : DWORD {
   ReadExecute = PAGE_EXECUTE_READ,
   ReadWriteExecute = PAGE_EXECUTE_READWRITE,
 };
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
 enum class PageAccess : int {
   None = 0,
   Read = 0,
@@ -198,7 +202,7 @@ template <bool AlwaysGetNew = true>
 static bool TryToAlignChunk(void** aRegion, void** aRetainedRegion,
                             size_t length, size_t alignment);
 
-#ifndef __wasi__
+#if !defined(__wasi__) && !defined(SERVO_MEMORY_WASM)
 static void* MapAlignedPagesSlow(size_t length, size_t alignment);
 #endif  // wasi
 static void* MapAlignedPagesLastDitch(size_t length, size_t alignment,
@@ -242,7 +246,7 @@ static inline void* MapInternal(void* desired, size_t length) {
   } else {
     region = VirtualAlloc(desired, length, flags, DWORD(PageAccess::ReadWrite));
   }
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   if (int err = posix_memalign(&region, gc::SystemPageSize(), length)) {
     MOZ_RELEASE_ASSERT(err == ENOMEM);
     return nullptr;
@@ -267,7 +271,7 @@ static inline void UnmapInternal(void* region, size_t length) {
 
 #ifdef XP_WIN
   MOZ_RELEASE_ASSERT(VirtualFree(region, 0, MEM_RELEASE) != 0);
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   free(region);
 #else
   if (munmap(region, length)) {
@@ -555,7 +559,7 @@ void* MapAlignedPages(size_t length, size_t alignment,
     alignment = allocGranularity;
   }
 
-#ifdef __wasi__
+#if defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   void* region = nullptr;
   if (int err = posix_memalign(&region, alignment, length)) {
     MOZ_ASSERT(err == ENOMEM);
@@ -632,7 +636,7 @@ void* MapAlignedPages(size_t length, size_t alignment,
 
   RecordMemoryAlloc(length);
   return region;
-#endif  // !__wasi__
+#endif  // !freestanding wasm
 }
 
 #ifdef JS_64BIT
@@ -737,7 +741,7 @@ static void* MapAlignedPagesRandom(size_t length, size_t alignment) {
 
 #endif  // defined(JS_64BIT)
 
-#ifndef __wasi__
+#if !defined(__wasi__) && !defined(SERVO_MEMORY_WASM)
 static void* MapAlignedPagesSlow(size_t length, size_t alignment) {
   void* alignedRegion = nullptr;
   do {
@@ -776,7 +780,7 @@ static void* MapAlignedPagesSlow(size_t length, size_t alignment) {
 
   return alignedRegion;
 }
-#endif  // wasi
+#endif  // freestanding wasm
 
 /*
  * In a low memory or high fragmentation situation, alignable chunks of the
@@ -944,7 +948,7 @@ void UnmapPages(void* region, size_t length) {
 
   UnmapInternal(region, length);
 
-#ifndef __wasi__
+#if !defined(__wasi__) && !defined(SERVO_MEMORY_WASM)
   RecordMemoryFree(length);
 #endif
 }
@@ -972,7 +976,7 @@ bool MarkPagesUnusedSoft(void* region, size_t length) {
 #if defined(XP_WIN)
   return VirtualAlloc(region, length, MEM_RESET,
                       DWORD(PageAccess::ReadWrite)) == region;
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   return 0;
 #else
   int status;
@@ -1043,7 +1047,7 @@ size_t GetPageFaultCount() {
     return 0;
   }
   return pmc.PageFaultCount;
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   return 0;
 #else
   struct rusage usage;
@@ -1057,7 +1061,7 @@ size_t GetPageFaultCount() {
 
 void* AllocateMappedContent(int fd, size_t offset, size_t length,
                             size_t alignment) {
-#ifdef __wasi__
+#if defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   MOZ_CRASH("Not yet supported for WASI");
 #else
   if (length == 0 || alignment == 0 || offset % alignment != 0 ||
@@ -1158,11 +1162,11 @@ void* AllocateMappedContent(int fd, size_t offset, size_t length,
 #  endif
 
   return map + (offset - alignedOffset);
-#endif  // __wasi__
+#endif  // freestanding wasm
 }
 
 void DeallocateMappedContent(void* region, size_t length) {
-#ifdef __wasi__
+#if defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   MOZ_CRASH("Not yet supported for WASI");
 #else
   if (!region) {
@@ -1195,7 +1199,7 @@ void DeallocateMappedContent(void* region, size_t length) {
 
   RecordMemoryFree(mappedLength);
 
-#endif  // __wasi__
+#endif  // freestanding wasm
 }
 
 static inline void ProtectMemory(void* region, size_t length, PageAccess prot) {
@@ -1205,7 +1209,7 @@ static inline void ProtectMemory(void* region, size_t length, PageAccess prot) {
   DWORD oldProtect;
   MOZ_RELEASE_ASSERT(VirtualProtect(region, length, DWORD(prot), &oldProtect) !=
                      0);
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_MEMORY_WASM)
   /* nothing */
 #else
   MOZ_RELEASE_ASSERT(mprotect(region, length, int(prot)) == 0);

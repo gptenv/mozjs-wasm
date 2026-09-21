@@ -14,7 +14,7 @@
 #  include <windows.h>
 #elif !defined(__OS2__)
 #  include <unistd.h>
-#  ifndef __wasi__
+#  if !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 #    include <sys/mman.h>
 #    ifndef MAP_ANON
 #      ifdef MAP_ANONYMOUS
@@ -84,7 +84,7 @@ static uintptr_t GetDesiredRegionSize() {
 
 #  define RESERVE_FAILED 0
 
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
 
 #  define RESERVE_FAILED 0
 

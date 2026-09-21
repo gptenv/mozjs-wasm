@@ -120,6 +120,29 @@ ifneq ($(HOST),$(TARGET))
         endif
     endif
 
+    # Cloudflare Workers use wasm32-unknown-unknown rather than WASI. Keep the
+    # same no-native-code execution model as the WASI PBL build, but use the
+    # normal wasm target toolchain and do not inject a WASI sysroot.
+    ifeq (wasm32-unknown-unknown,$(TARGET))
+        CC = clang --target=$(TARGET) -nostdlib -Wl,--no-entry -isystem $(SRC_DIR)/build/worker-include -isystem /usr/share/wasi-sysroot/include
+        CPP = clang --target=$(TARGET) -E -isystem $(SRC_DIR)/build/worker-include -isystem /usr/share/wasi-sysroot/include
+        CXX = clang++ --target=$(TARGET) -nostdlib -Wl,--no-entry -DSERVO_WORKER_WASM=1 -isystem $(SRC_DIR)/build/worker-include -isystem /usr/share/wasi-sysroot/include/c++/v1 -isystem /usr/share/wasi-sysroot/include
+        AR = llvm-ar
+        HOST_CC = clang
+        HOST_CXX = clang++
+        LDFLAGS += -nostdlib -Wl,--no-entry
+        CONFIGURE_FLAGS += \
+            --enable-portable-baseline-interp \
+            --enable-portable-baseline-interp-force \
+            --disable-clang-plugin \
+            --disable-jit \
+            --disable-shared-memory \
+            --disable-hardening \
+            --disable-optimize \
+            --without-intl-api \
+            $(NULL)
+    endif
+
 	ifeq (android,$(findstring android,$(TARGET)))
 		# Force use of lld on android. Mozilla build system tries to use
 		# gold or bfd linker on Android to support their 'elfhack'functionality in
@@ -198,7 +221,7 @@ all: maybe-configure
 JSSRC := '$(SRC_DIR)'/js/src
 # Keep track of all input variables to configure, so we don't skip reconfigure
 # when we do need to reconfigure
-CONFIGURE_INPUTS := "$(CC)$(CFLAGS)$(CPP)$(CPPFLAGS)$(CXX)$(CXXFLAGS)$(AS)$(AR)$(HOST_CC)$(HOST_CXX)$(WASI_SYSROOT)$(CONFIGURE_FLAGS)"
+CONFIGURE_INPUTS := "$(CC)$(CFLAGS)$(CPP)$(CPPFLAGS)$(CXX)$(CXXFLAGS)$(LDFLAGS)$(AS)$(AR)$(HOST_CC)$(HOST_CXX)$(WASI_SYSROOT)$(CONFIGURE_FLAGS)"
 LAST_CONFIGURE_INPUTS := "$(shell cat reconfigure.inputs)"
 maybe-configure:
 	[[ $(JSSRC)/configure -ot $(JSSRC)/configure.in ]] && touch $(JSSRC)/configure || true
@@ -209,6 +232,7 @@ maybe-configure:
 	  CC="$(CC)" CFLAGS="$(CFLAGS)" \
 	  CPP="$(CPP)" CPPFLAGS="$(CPPFLAGS)" \
 	  CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" \
+	  LDFLAGS="$(LDFLAGS)" \
 	  HOST_CC="$(HOST_CC)" \
 	  HOST_CXX="$(HOST_CXX)" \
 	  WASI_SYSROOT="$(WASI_SYSROOT)" \

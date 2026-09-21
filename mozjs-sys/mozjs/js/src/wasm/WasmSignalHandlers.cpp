@@ -32,7 +32,7 @@
 #elif defined(XP_DARWIN)
 #  include <mach/exc.h>
 #  include <mach/mach.h>
-#elif !defined(__wasi__)
+#elif !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 #  include <signal.h>
 #endif
 

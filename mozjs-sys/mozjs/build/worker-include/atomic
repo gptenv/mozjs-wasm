@@ -1,0 +1,16 @@
+/* wasi-libc++ deliberately disables <atomic> for its WASI single-threaded
+ * configuration. Workers still need C++ atomic primitives for SpiderMonkey's
+ * internal lock-free data structures; wasm supplies these as compiler
+ * builtins, while actual Worker concurrency is not exposed to this module. */
+#ifndef SERVO_WORKER_ATOMIC
+#define SERVO_WORKER_ATOMIC
+#ifdef __cplusplus
+#  undef _LIBCPP_HAS_NO_THREADS
+#  undef _LIBCPP_HAS_NO_ATOMIC_HEADER
+#  ifndef _LIBCPP_ATOMIC_FLAG_TYPE
+#    define _LIBCPP_ATOMIC_FLAG_TYPE bool
+#  endif
+#  define _LIBCPP_FREESTANDING 1
+#endif
+#include_next <atomic>
+#endif

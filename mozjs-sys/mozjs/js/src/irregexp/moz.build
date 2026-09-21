@@ -50,6 +50,9 @@ SOURCES += [
     "imported/regexp-graph-printer.cc",
     "imported/regexp-node-printer.cc",
     "RegExpNativeMacroAssembler.cpp",
+    # The Rust Unicode-properties glue needs this C ABI even when the
+    # SpiderMonkey ICU implementation is disabled for the Worker target.
+    "util/ZoneShimFFI.cpp",
 ]
 
 if CONFIG["JS_HAS_INTL_API"]:
@@ -57,7 +60,6 @@ if CONFIG["JS_HAS_INTL_API"]:
     UNIFIED_SOURCES += [
         "imported/property-sequences.cc",
         "imported/special-case.cc",
-        "util/ZoneShimFFI.cpp",
     ]
 
 if CONFIG["JS_JITSPEW"]:

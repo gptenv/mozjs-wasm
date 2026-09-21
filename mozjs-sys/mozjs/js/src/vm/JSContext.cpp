@@ -175,22 +175,34 @@ JSContext* js::NewContext(uint32_t maxBytes, JSRuntime* parentRuntime) {
 
   JSRuntime* runtime = js_new<JSRuntime>(parentRuntime);
   if (!runtime) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS context: runtime allocation failed\n");
+#endif
     return nullptr;
   }
 
   JSContext* cx = js_new<JSContext>(runtime, JS::ContextOptions());
   if (!cx) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS context: context allocation failed\n");
+#endif
     js_delete(runtime);
     return nullptr;
   }
 
   if (!cx->init()) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS context: context initialization failed\n");
+#endif
     js_delete(cx);
     js_delete(runtime);
     return nullptr;
   }
 
   if (!runtime->init(cx, maxBytes)) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS context: runtime initialization failed\n");
+#endif
     runtime->destroyRuntime();
     js_delete(cx);
     js_delete(runtime);

@@ -76,7 +76,9 @@ constexpr int CountOf() {
 
 template <size_t N>
 constexpr std::array<std::string_view, N> SplitNames(const char* raw_names) {
-  std::array<std::string_view, N> result;
+  // libc++ 13 stores zero-length arrays in a dummy byte that must be
+  // value-initialized for this function to remain a constant expression.
+  std::array<std::string_view, N> result{};
   std::string_view names(raw_names);
 
   // Remove '(' and ')'.

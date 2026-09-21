@@ -52,6 +52,17 @@
 #include "js/shadow/Shape.h"
 #include "jsfriendapi.h"
 
+extern "C" {
+bool Servo_JS_ForOfIteratorInit(
+    JS::ForOfIterator* iterator, JS::HandleValue iterable,
+    JS::ForOfIterator::NonIterableBehavior nonIterableBehavior);
+bool Servo_JS_ForOfIteratorNext(JS::ForOfIterator* iterator,
+                                JS::MutableHandleValue val, bool* done);
+bool Servo_JS_ForOfIteratorValueIsIterable(const JS::ForOfIterator* iterator);
+JS::Realm* Servo_JS_EnterRealm(JSContext* cx, JSObject* target);
+void Servo_JS_LeaveRealm(JSContext* cx, JS::Realm* oldRealm);
+}
+
 namespace glue {
 
 // Reexport some functions that are marked inline.
@@ -176,6 +187,31 @@ bool JS_ForOfIteratorNext(JS::ForOfIterator* iterator,
 
 bool JS_ForOfIteratorValueIsIterable(const JS::ForOfIterator* iterator) {
   return iterator->valueIsIterable();
+}
+
+extern "C" bool Servo_JS_ForOfIteratorInit(
+    JS::ForOfIterator* iterator, JS::HandleValue iterable,
+    JS::ForOfIterator::NonIterableBehavior nonIterableBehavior) {
+  return JS_ForOfIteratorInit(iterator, iterable, nonIterableBehavior);
+}
+
+extern "C" bool Servo_JS_ForOfIteratorNext(JS::ForOfIterator* iterator,
+                                             JS::MutableHandleValue val,
+                                             bool* done) {
+  return JS_ForOfIteratorNext(iterator, val, done);
+}
+
+extern "C" bool Servo_JS_ForOfIteratorValueIsIterable(
+    const JS::ForOfIterator* iterator) {
+  return JS_ForOfIteratorValueIsIterable(iterator);
+}
+
+extern "C" JS::Realm* Servo_JS_EnterRealm(JSContext* cx, JSObject* target) {
+  return JS::EnterRealm(cx, target);
+}
+
+extern "C" void Servo_JS_LeaveRealm(JSContext* cx, JS::Realm* oldRealm) {
+  JS::LeaveRealm(cx, oldRealm);
 }
 
 // These functions are only intended for use in testing,

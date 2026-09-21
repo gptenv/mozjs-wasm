@@ -2141,6 +2141,7 @@ case $os in
 	| vxsim* \
 	| vxworks* \
 	| wasi* \
+	| unknown* \
 	| watchos* \
 	| wince* \
 	| windiss* \

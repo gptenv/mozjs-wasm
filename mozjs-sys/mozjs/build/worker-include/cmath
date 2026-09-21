@@ -1,0 +1,8 @@
+/* libc++'s wasm32-wasi cmath header assumes limits was included by a
+ * transitive header. Make that dependency explicit for the Worker build. */
+#ifndef SERVO_WORKER_CMATH
+#define SERVO_WORKER_CMATH
+#include <cstdlib>
+#include <limits>
+#include_next <cmath>
+#endif

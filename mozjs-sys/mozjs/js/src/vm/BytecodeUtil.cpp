@@ -2792,7 +2792,7 @@ static bool GetPCCountJSON(JSContext* cx, const ScriptAndCounts& sac,
 
     json.beginObject();
 
-    json.property("id", offset);
+    json.property("id", static_cast<uint64_t>(offset));
     json.property("line", range.frontLineNumber());
     json.property("name", CodeName(op));
 

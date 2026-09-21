@@ -226,7 +226,7 @@ void WasmSharedArrayRawBuffer::discard(size_t byteOffset, size_t byteLen) {
     MOZ_ASSERT(!result);  // this always "fails" when unlocking unlocked
                           // memory...which is the only case we care about
   }
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
   AtomicOperations::memsetSafeWhenRacy(addr, 0, byteLen);
 #else  // !XP_WIN
   void* data = MozTaggedAnonymousMmap(

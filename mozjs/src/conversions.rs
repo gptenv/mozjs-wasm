@@ -47,7 +47,6 @@ use crate::rust::ForOfIterationFailure;
 use crate::rust::{maybe_wrap_object_or_null_value, maybe_wrap_object_value, ToString};
 use crate::rust::{HandleValue, MutableHandleValue};
 use crate::rust::{ToBoolean, ToInt32, ToInt64, ToNumber, ToUint16, ToUint32, ToUint64};
-use libc;
 use log::debug;
 use num_traits::PrimInt;
 use std::borrow::Cow;
@@ -721,7 +720,7 @@ impl<T: ToJSValConvertible> ToJSValConvertible for Rc<T> {
 impl<T: ToJSValConvertible> ToJSValConvertible for [T] {
     #[inline]
     fn to_jsval(&self, cx: &mut JSContext, mut rval: MutableHandleValue) {
-        rooted!(&in(cx) let js_array = unsafe { NewArrayObject1(cx, self.len() as libc::size_t) });
+        rooted!(&in(cx) let js_array = unsafe { NewArrayObject1(cx, self.len()) });
         assert!(!js_array.handle().is_null());
 
         rooted!(&in(cx) let mut val = UndefinedValue());

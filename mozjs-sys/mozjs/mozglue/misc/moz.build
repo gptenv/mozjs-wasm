@@ -48,8 +48,10 @@ SOURCES += [
     "PerfStats.cpp",
     "Printf.cpp",
     "SIMD.cpp",
-    "StackWalk.cpp",
 ]
+
+if CONFIG["OS_ARCH"] not in ("WASI", "Unknown"):
+    SOURCES += ["StackWalk.cpp"]
 
 if CONFIG["TARGET_CPU"].startswith("x86"):
     SOURCES += [
@@ -114,7 +116,7 @@ if CONFIG["OS_ARCH"] == "WINNT":
         "RWLock_windows.cpp",
     ]
 # WASI hasn't supported cond vars and mutexes yet so noop implementation is used.
-elif CONFIG["OS_ARCH"] == "WASI":
+elif CONFIG["OS_ARCH"] in ("WASI", "Unknown"):
     SOURCES += [
         "ConditionVariable_noop.cpp",
         "Mutex_noop.cpp",

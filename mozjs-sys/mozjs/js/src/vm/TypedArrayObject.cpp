@@ -23,7 +23,7 @@
 #include <numeric>
 #include <string.h>
 #include <string_view>
-#if !defined(XP_WIN) && !defined(__wasi__)
+#if !defined(XP_WIN) && !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 #  include <sys/mman.h>
 #endif
 #include <type_traits>

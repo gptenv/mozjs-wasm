@@ -529,6 +529,11 @@ def split_triplet(triplet, allow_wasi=False):
         canonical_os = canonical_kernel = "SunOS"
     elif os.startswith("wasi") and allow_wasi:
         canonical_os = canonical_kernel = "WASI"
+    elif os == "unknown":
+        # wasm32-unknown-unknown is the freestanding WebAssembly target used
+        # by browser hosts such as Cloudflare Workers. It has no WASI libc or
+        # OS kernel, but it is still a supported SpiderMonkey PBL target.
+        canonical_os = canonical_kernel = "Unknown"
     else:
         raise ValueError("Unknown OS: %s" % os)
 
@@ -585,7 +590,7 @@ def split_triplet(triplet, allow_wasi=False):
     elif cpu == "sh4":
         canonical_cpu = "sh4"
         endianness = "little"
-    elif cpu == "wasm32" and allow_wasi:
+    elif cpu == "wasm32" and (allow_wasi or os == "unknown"):
         canonical_cpu = "wasm32"
         endianness = "little"
     else:

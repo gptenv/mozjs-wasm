@@ -12,6 +12,14 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 
+extern "C" {
+    fn Servo_JS_HeapObjectWriteBarriers(value: *mut *mut JSObject, previous: *mut JSObject, next: *mut JSObject);
+    fn Servo_JS_HeapStringWriteBarriers(value: *mut *mut JSString, previous: *mut JSString, next: *mut JSString);
+    fn Servo_JS_HeapBigIntWriteBarriers(value: *mut *mut JS::BigInt, previous: *mut JS::BigInt, next: *mut JS::BigInt);
+    fn Servo_JS_HeapScriptWriteBarriers(value: *mut *mut JSScript, previous: *mut JSScript, next: *mut JSScript);
+    fn Servo_JS_HeapValueWriteBarriers(value: *mut JS::Value, previous: *const JS::Value, next: *const JS::Value);
+}
+
 /// A trait for JS types that can be registered as roots.
 pub trait RootKind {
     type Vtable;
@@ -176,7 +184,7 @@ impl Initialize for *mut JSObject {
 
 impl GCMethods for *mut JSObject {
     unsafe fn post_barrier(v: *mut *mut JSObject, prev: *mut JSObject, next: *mut JSObject) {
-        JS::HeapObjectWriteBarriers(v, prev, next);
+        Servo_JS_HeapObjectWriteBarriers(v, prev, next);
     }
 }
 
@@ -188,7 +196,7 @@ impl Initialize for *mut JSFunction {
 
 impl GCMethods for *mut JSFunction {
     unsafe fn post_barrier(v: *mut *mut JSFunction, prev: *mut JSFunction, next: *mut JSFunction) {
-        JS::HeapObjectWriteBarriers(
+        Servo_JS_HeapObjectWriteBarriers(
             mem::transmute(v),
             mem::transmute(prev),
             mem::transmute(next),
@@ -204,7 +212,7 @@ impl Initialize for *mut JSString {
 
 impl GCMethods for *mut JSString {
     unsafe fn post_barrier(v: *mut *mut JSString, prev: *mut JSString, next: *mut JSString) {
-        JS::HeapStringWriteBarriers(v, prev, next);
+        Servo_JS_HeapStringWriteBarriers(v, prev, next);
     }
 }
 
@@ -226,7 +234,7 @@ impl Initialize for *mut JS::BigInt {
 
 impl GCMethods for *mut JS::BigInt {
     unsafe fn post_barrier(v: *mut *mut JS::BigInt, prev: *mut JS::BigInt, next: *mut JS::BigInt) {
-        JS::HeapBigIntWriteBarriers(v, prev, next);
+        Servo_JS_HeapBigIntWriteBarriers(v, prev, next);
     }
 }
 
@@ -238,7 +246,7 @@ impl Initialize for *mut JSScript {
 
 impl GCMethods for *mut JSScript {
     unsafe fn post_barrier(v: *mut *mut JSScript, prev: *mut JSScript, next: *mut JSScript) {
-        JS::HeapScriptWriteBarriers(v, prev, next);
+        Servo_JS_HeapScriptWriteBarriers(v, prev, next);
     }
 }
 
@@ -260,7 +268,7 @@ impl Initialize for JS::Value {
 
 impl GCMethods for JS::Value {
     unsafe fn post_barrier(v: *mut JS::Value, prev: JS::Value, next: JS::Value) {
-        JS::HeapValueWriteBarriers(v, &prev, &next);
+        Servo_JS_HeapValueWriteBarriers(v, &prev, &next);
     }
 }
 

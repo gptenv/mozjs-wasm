@@ -60,7 +60,7 @@ JS::FilenameValidationCallback js::gFilenameValidationCallback = nullptr;
 
 namespace js {
 
-#ifndef __wasi__
+#if !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 bool gCanUseExtraThreads = true;
 #else
 bool gCanUseExtraThreads = false;
@@ -174,16 +174,25 @@ bool JSRuntime::init(JSContext* cx, uint32_t maxbytes) {
 #endif
 
   if (CanUseExtraThreads() && !EnsureHelperThreadsInitialized()) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS runtime: helper threads unavailable\n");
+#endif
     return false;
   }
 
   mainContext_ = cx;
 
   if (!gc.init(maxbytes)) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS runtime: GC initialization failed\n");
+#endif
     return false;
   }
 
   if (!InitRuntimeNumberState(this)) {
+#ifdef SERVO_WORKER_WASM
+    fprintf(stderr, "Worker JS runtime: number state initialization failed\n");
+#endif
     return false;
   }
 

@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::jsapi::glue::{
-    JS_ForOfIteratorInit, JS_ForOfIteratorNext, JS_ForOfIteratorValueIsIterable,
-};
 use crate::jsapi::jsid;
 use crate::jsapi::mozilla;
 use crate::jsapi::JSAutoRealm;
@@ -28,6 +25,22 @@ use crate::jsval::{JSVal, UndefinedValue};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ptr;
+
+extern "C" {
+    fn Servo_JS_ForOfIteratorInit(
+        iterator: *mut JS::ForOfIterator,
+        iterable: JS::HandleValue,
+        behavior: JS::ForOfIterator_NonIterableBehavior,
+    ) -> bool;
+    fn Servo_JS_ForOfIteratorNext(
+        iterator: *mut JS::ForOfIterator,
+        value: JS::MutableHandleValue,
+        done: *mut bool,
+    ) -> bool;
+    fn Servo_JS_ForOfIteratorValueIsIterable(iterator: *const JS::ForOfIterator) -> bool;
+    fn Servo_JS_EnterRealm(cx: *mut JSContext, target: *mut JSObject) -> *mut JS::Realm;
+    fn Servo_JS_LeaveRealm(cx: *mut JSContext, old_realm: *mut JS::Realm);
+}
 
 impl<T> Deref for JS::Handle<T> {
     type Target = T;
@@ -66,7 +79,7 @@ impl Default for JS::PropertyDescriptor {
 impl Drop for JSAutoRealm {
     fn drop(&mut self) {
         unsafe {
-            JS::LeaveRealm(self.cx_, self.oldRealm_);
+            Servo_JS_LeaveRealm(self.cx_, self.oldRealm_);
         }
     }
 }
@@ -182,7 +195,7 @@ impl JSAutoRealm {
     pub fn new(cx: *mut JSContext, target: *mut JSObject) -> JSAutoRealm {
         JSAutoRealm {
             cx_: cx,
-            oldRealm_: unsafe { JS::EnterRealm(cx, target) },
+            oldRealm_: unsafe { Servo_JS_EnterRealm(cx, target) },
         }
     }
 }
@@ -572,15 +585,15 @@ impl JS::ForOfIterator {
         iterable: JS::HandleValue,
         non_iterable_behavior: JS::ForOfIterator_NonIterableBehavior,
     ) -> bool {
-        JS_ForOfIteratorInit(self, iterable, non_iterable_behavior)
+        Servo_JS_ForOfIteratorInit(self, iterable, non_iterable_behavior)
     }
 
     pub unsafe fn next(&mut self, val: JS::MutableHandleValue, done: *mut bool) -> bool {
-        JS_ForOfIteratorNext(self, val, done)
+        Servo_JS_ForOfIteratorNext(self, val, done)
     }
 
     pub fn is_iterable(&self) -> bool {
-        unsafe { JS_ForOfIteratorValueIsIterable(self) }
+        unsafe { Servo_JS_ForOfIteratorValueIsIterable(self) }
     }
 }
 

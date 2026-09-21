@@ -14,7 +14,7 @@
 #endif
 
 #if (defined(MOZ_HAS_MOZGLUE) || defined(MOZILLA_INTERNAL_API)) && \
-    !defined(__wasi__)
+    !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 #  define MOZ_DUMP_ASSERTION_STACK
 #endif
 #if defined(XP_WIN) && (defined(DEBUG) || defined(FUZZING))
@@ -25,7 +25,7 @@
 #if defined(_WIN32)
 #  include <process.h>
 #  define MOZ_GET_PID() _getpid()
-#elif !defined(__wasi__)
+#elif !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 #  include <unistd.h>
 #  define MOZ_GET_PID() getpid()
 #else
@@ -257,7 +257,7 @@ MOZ_ReportAssertionFailure(const char* aStr, const char* aFilename,
       MOZ_NoReturn(line);         \
     } while (false)
 
-#elif __wasi__
+#elif defined(__wasi__) || defined(SERVO_WORKER_WASM)
 
 #  define MOZ_REALLY_CRASH(line) __builtin_trap()
 

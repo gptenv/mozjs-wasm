@@ -4,7 +4,7 @@
 
 #include "MmapFaultHandler.h"
 
-#if defined(XP_UNIX) && !defined(XP_DARWIN) && !defined(__wasi__)
+#if defined(XP_UNIX) && !defined(XP_DARWIN) && !defined(__wasi__) && !defined(SERVO_WORKER_WASM)
 
 #  include "mozilla/Assertions.h"
 #  include "mozilla/Atomics.h"

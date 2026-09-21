@@ -197,7 +197,8 @@ void JSONPrinter::property(const char* name, uint64_t value) {
   out_.printf("%" PRIu64, value);
 }
 
-#if defined(XP_DARWIN) || defined(__OpenBSD__) || defined(__wasi__)
+#if defined(XP_DARWIN) || defined(__OpenBSD__) || defined(__wasi__) || \
+    defined(SERVO_WORKER_WASM)
 void JSONPrinter::property(const char* name, size_t value) {
   propertyName(name);
   out_.printf("%zu", value);
