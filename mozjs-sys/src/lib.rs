@@ -47,6 +47,10 @@ pub use crate::generated::root as jsapi;
 #[allow(dead_code)]
 mod generated {
     #![allow(unnecessary_transmutes)]
+    // Bindgen derives `PartialEq` for C++ structs that contain callback
+    // pointers. The generated comparison is deliberate ABI glue; Rust cannot
+    // prove pointer identity is stable across codegen units.
+    #![allow(unpredictable_function_pointer_comparisons)]
     include!(concat!(env!("OUT_DIR"), "/build/jsapi.rs"));
 }
 

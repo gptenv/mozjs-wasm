@@ -84,7 +84,14 @@ void fillAbortMessage(char (&msg)[N], uintptr_t retAddress) {
 // When building for fuzzing without ASan or TSan, we automatically pull in the
 // UndefinedBehaviorSanitizer runtime which also requires the same workaround
 // as with ASan or TSan.
+#if defined(__wasm32__)
+// The Worker link also contains the wasi-sysroot libc abort implementation
+// used by Servo's shared allocator. Keep SpiderMonkey's fallback weak so the
+// final module has one canonical abort symbol.
+extern "C" __attribute__((weak)) void abort(void) {
+#else
 extern "C" void abort(void) {
+#endif
 #  ifdef MOZ_WIDGET_ANDROID
   char msg[64] = {};
   fillAbortMessage(msg, uintptr_t(__builtin_return_address(0)));

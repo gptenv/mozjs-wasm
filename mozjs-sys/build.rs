@@ -516,11 +516,83 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
     }
 }
 
+/// Every wasi-sysroot `libc.a` member this crate's own `worker_libc_shim.c`
+/// overrides, i.e. the exact set that must be physically absent from the
+/// trimmed copy `build_trimmed_wasi_libc` produces. Each entry was found by
+/// building the Worker target, then for every `wasi_snapshot_preview1`
+/// import still present in the resulting module, running
+/// `llvm-nm --undefined-only` across every crate's `.rlib` to confirm the
+/// higher-level libc symbol was genuinely referenced somewhere real (not
+/// just theoretically reachable), then `llvm-nm --defined-only` on the
+/// extracted wasi-sysroot object to find which `.o` member provides it.
+/// `worker_libc_shim.c` has a comment next to each function it defines
+/// explaining which caller needed it. If a future wasi-sysroot import
+/// reappears, that same process (not guessing) is how to extend this list.
+fn worker_libc_trimmed_objects_to_remove() -> &'static [&'static str] {
+    &[
+        "clock_gettime.o",
+        "time.o",
+        "write.o",
+        "writev.o",
+        "readv.o",
+        "lseek.o",
+        "isatty.o",
+        "fcntl.o",
+        "ioctl.o",
+        "read.o",
+        "close.o",
+        // Bundles open/remove/rmdir/unlink/__wasilibc_open_nomode into one
+        // translation unit; see the comment on `open()` in
+        // worker_libc_shim.c.
+        "posix.o",
+        "fstat.o",
+        "getenv.o",
+        "setenv.o",
+        "unsetenv.o",
+        "exit.o",
+        "_Exit.o",
+        // Not currently referenced by anything in this build (confirmed via
+        // the same llvm-nm process above), but removed preemptively: it is
+        // what originally motivated this whole investigation (see the
+        // `-bundle` comment above) by transitively pulling in `at_fdcwd.o`
+        // via `fstat`, and nothing in this crate needs a real `chdir()`.
+        "chdir.o",
+    ]
+}
+
+/// Copies wasi-sysroot's `libc.a` into `build_dir` and removes every member
+/// listed in `worker_libc_trimmed_objects_to_remove`, under a new name
+/// (`libworker_wasi_libc_trimmed.a`) so it can never be resolved by any
+/// plain `-lc` reference -- from this crate or any other -- landing on the
+/// original, untrimmed archive instead. See the long comment where this is
+/// called from for why a trimmed copy, rather than any link-order or
+/// link-modifier trick, is the only approach that actually works.
+fn build_trimmed_wasi_libc(wasm_lib_dir: &Path, build_dir: &Path) {
+    let src = wasm_lib_dir.join("libc.a");
+    let dst = build_dir.join("libworker_wasi_libc_trimmed.a");
+    println!("cargo:rerun-if-changed={}", src.display());
+    fs::copy(&src, &dst).expect("copy wasi-sysroot libc.a for trimming");
+    let ar = env::var_os("AR").unwrap_or_else(|| OsString::from("ar"));
+    let status = Command::new(&ar)
+        .arg("d")
+        .arg(&dst)
+        .args(worker_libc_trimmed_objects_to_remove())
+        .status()
+        .expect("run ar to trim wasi-sysroot libc.a");
+    assert!(status.success(), "ar d failed while trimming wasi-sysroot libc.a");
+}
+
 fn build_worker_libc_shim(build_dir: &Path) {
     println!("cargo:rerun-if-changed=./src/worker_libc_shim.c");
+    // `cargo_metadata(false)`: this function's caller emits its own
+    // `cargo:rustc-link-search`/`cargo:rustc-link-lib` directives for this
+    // archive explicitly (matching the pattern used for the trimmed
+    // wasi-sysroot libc below); suppress `cc`'s own automatic duplicates of
+    // the same directives from `compile()`.
     cc::Build::new()
         .file("./src/worker_libc_shim.c")
         .out_dir(build_dir)
+        .cargo_metadata(false)
         .compile("worker_libc_shim");
 }
 
@@ -547,22 +619,81 @@ fn link_static_lib_binaries(build_dir: &Path) {
             .unwrap_or_else(|| PathBuf::from("/usr/share/wasi-sysroot/lib/wasm32-wasi"));
         assert!(wasm_lib_dir.join("libc++.a").exists(), "missing wasm libc++ archive");
         println!("cargo:rustc-link-search=native={}", wasm_lib_dir.display());
-        println!("cargo:rustc-link-lib=static=c++");
-        println!("cargo:rustc-link-lib=static=c++abi");
-        // Must come before `static=c`: static archives only pull in a member
-        // to satisfy a symbol that is *still undefined* when they're
-        // searched. This shim defines the higher-level POSIX functions
-        // (clock_gettime, write, getenv, ...) that wasi-sysroot's libc.a
-        // also provides, so that libc.a's own objects for those functions
-        // -- which have real wasi_snapshot_preview1 imports baked into
-        // their precompiled bytecode -- are never linked in at all. See
-        // src/worker_libc_shim.c for the full explanation and verification
-        // notes; the higher-level-vs-syscall distinction here isn't
-        // optional, it's the only layer where interception actually works.
+        // `-bundle` on every wasi-sysroot static lib below: Rust's default
+        // modifier for `cargo:rustc-link-lib=static=NAME` is `+bundle`,
+        // which -- for a `-sys` crate like this one -- selectively copies
+        // whichever archive members satisfy symbols the crate's own
+        // compiled code references *at the point this rlib is built*,
+        // directly into `libmozjs_sys.rlib` itself (verified: `ar t` on
+        // the built rlib contains a byte-identical copy of wasi-sysroot's
+        // `chdir.o`, pulled in this way even though no C++ source here
+        // calls `chdir()` -- it must come from a bindgen-generated
+        // `extern "C"` declaration). Once bundled that way, the object is
+        // a permanent, unconditionally-linked part of this crate's rlib:
+        // it is no longer a lazily-searched archive member by the time the
+        // *final* servo-js-wasm link happens, so none of the link-order or
+        // whole-archive tricks below have any way to intercept it -- it
+        // brings its own real `wasi_snapshot_preview1` imports (and drags
+        // in further wasi-sysroot objects transitively, e.g. `chdir`
+        // needing `fstatat` needing `at_fdcwd.o`) regardless. `-bundle`
+        // makes these libraries ordinary link-time-only inputs to the
+        // *final* artifact instead, so they only ever participate in the
+        // one, single, lazy archive search this file's ordering and
+        // whole-archive comments below are actually about.
+        println!("cargo:rustc-link-lib=static:-bundle=c++");
+        println!("cargo:rustc-link-lib=static:-bundle=c++abi");
+        // This shim defines the higher-level POSIX functions (clock_gettime,
+        // write, getenv, ...) that wasi-sysroot's libc.a also provides, so
+        // that libc.a's own objects for those functions -- which have real
+        // wasi_snapshot_preview1 imports baked into their precompiled
+        // bytecode -- are never linked in at all. See src/worker_libc_shim.c
+        // for the full explanation and verification notes.
+        //
+        // Two link-order-based approaches were tried and abandoned before
+        // this one:
+        //
+        // 1. Plain `-lworker_libc_shim` before `-lc`, relying on this
+        //    archive being *searched* before wasi-sysroot's libc.a. Rustc
+        //    collects `cargo:rustc-link-lib` directives from every crate's
+        //    build script across the whole dependency graph and re-orders
+        //    them itself, and -- worse -- `servo_allocator`'s build.rs also
+        //    references plain `libc.a` for `malloc`/`free`, so even a
+        //    correct relative order *within this file* said nothing about
+        //    where some other crate's own reference to the same library
+        //    landed. Confirmed empirically: this let wasi-sysroot's own
+        //    `time.o`/`posix.o`/`getenv.o`/etc. get searched -- and pull
+        //    their real WASI imports -- before this shim ever appeared.
+        //
+        // 2. `cargo:rustc-link-lib=static:+whole-archive=worker_libc_shim`,
+        //    forcing every object in the shim archive to be linked
+        //    unconditionally regardless of order. This does make the shim
+        //    win the symbols it defines, but it does not stop wasi-sysroot's
+        //    libc.a from *also* being searched (still lazily, still
+        //    order-dependent, per (1) above) for the exact same symbols --
+        //    producing hard `duplicate symbol` link errors instead of a
+        //    silent WASI-import leak. No combination of modifiers on either
+        //    side changes this: two different archives both unconditionally
+        //    offering the same strong symbol is a linker error either way.
+        //
+        // Neither approach can work because they both still let wasi-
+        // sysroot's *unmodified* `libc.a` participate in the link somewhere.
+        // The only order-independent fix is to make sure that
+        // archive never contains the conflicting objects in the first
+        // place: copy it and `ar d` out every member this shim overrides
+        // (confirmed via `llvm-nm --undefined-only` cross-referenced
+        // against every `.rlib` in a real build -- see
+        // `worker_libc_trimmed_objects_to_remove()` below for the exact
+        // list and how each one was found needed), then link *that* copy
+        // under a name libc.a's own path will never resolve to. With the
+        // conflicting objects physically absent, there is nothing left for
+        // either this shim's linkage or any other crate's own `-lc`
+        // reference to race against, regardless of search order.
         build_worker_libc_shim(build_dir);
+        println!("cargo:rustc-link-search=native={}", build_dir.display());
         println!("cargo:rustc-link-lib=static=worker_libc_shim");
-        println!("cargo:rustc-link-lib=static=c");
-        println!("cargo:rustc-link-lib=static=wasi-emulated-getpid");
+        build_trimmed_wasi_libc(&wasm_lib_dir, build_dir);
+        println!("cargo:rustc-link-lib=static:-bundle=worker_wasi_libc_trimmed");
+        println!("cargo:rustc-link-lib=static:-bundle=wasi-emulated-getpid");
     } else if let Some(cxxstdlib) = env::var("CXXSTDLIB").ok() {
         println!("cargo:rustc-link-lib={cxxstdlib}");
     } else if target.contains("apple") || target.contains("freebsd") || target.contains("ohos") {

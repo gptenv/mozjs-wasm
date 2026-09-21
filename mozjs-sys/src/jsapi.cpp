@@ -98,12 +98,12 @@ void JS_StackCapture_AllFrames(JS::StackCapture* capture) {
   // pointer, it is uninitialized memory. This means we must
   // overwrite its value, rather than perform an assignment
   // which could invoke a destructor on uninitialized memory.
-  memcpy(capture, &all, sizeof(JS::StackCapture));
+  memcpy(static_cast<void*>(capture), &all, sizeof(JS::StackCapture));
 }
 
 void JS_StackCapture_MaxFrames(uint32_t max, JS::StackCapture* capture) {
   JS::StackCapture maxFrames = JS::StackCapture(JS::MaxFrames(max));
-  memcpy(capture, &maxFrames, sizeof(JS::StackCapture));
+  memcpy(static_cast<void*>(capture), &maxFrames, sizeof(JS::StackCapture));
 }
 
 void JS_StackCapture_FirstSubsumedFrame(JSContext* cx,
@@ -111,7 +111,7 @@ void JS_StackCapture_FirstSubsumedFrame(JSContext* cx,
                                         JS::StackCapture* capture) {
   JS::StackCapture subsumed =
       JS::StackCapture(JS::FirstSubsumedFrame(cx, ignoreSelfHostedFrames));
-  memcpy(capture, &subsumed, sizeof(JS::StackCapture));
+  memcpy(static_cast<void*>(capture), &subsumed, sizeof(JS::StackCapture));
 }
 
 size_t GetLinearStringLength(JSLinearString* s) {

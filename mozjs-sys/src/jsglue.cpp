@@ -408,7 +408,7 @@ static int HandlerFamily;
                : _base::setImmutablePrototype(cx, proxy, succeeded);          \
   }
 
-class WrapperProxyHandler : public js::Wrapper {
+class WrapperProxyHandler final : public js::Wrapper {
   ProxyTraps mTraps;
 
  public:

@@ -40,6 +40,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* See `build_trimmed_wasi_libc` in mozjs-sys/build.rs for how this file's
+ * functions no longer compete with wasi-sysroot's own definitions of the
+ * same names at all: the final link never sees wasi-sysroot's *unmodified*
+ * libc.a, only a copy with exactly these functions' `.o` members removed.
+ * That made two earlier, order-based approaches (documented in build.rs's
+ * git history) unnecessary -- plain link order and the `+whole-archive`
+ * modifier were both tried and both failed, for different reasons, before
+ * landing on trimming the archive instead. Weak is kept here mainly so a
+ * future, deliberate strong definition elsewhere (e.g. a test harness)
+ * could still override these without a link error; nothing in this build
+ * currently provides one. */
+#define WORKER_WEAK __attribute__((weak))
+
 /* ---- time: clock_gettime (backs js::PRMJ_Now() / Date.now(), and TLS
  * certificate/session-ticket validation via rustls-pki-types::UnixTime) --
  *
@@ -75,7 +88,7 @@ extern uint64_t servo_worker_monotonic_now_ns(void);
 __attribute__((import_module("env"), import_name("worker_unix_time_now_ns")))
 extern uint64_t worker_unix_time_now_ns(void);
 
-int clock_gettime(int clk_id, struct worker_timespec *tp) {
+WORKER_WEAK int clock_gettime(int clk_id, struct worker_timespec *tp) {
   uint64_t ns = (clk_id == WORKER_CLOCK_MONOTONIC) ? servo_worker_monotonic_now_ns()
                                                     : worker_unix_time_now_ns();
   tp->tv_sec = (long long)(ns / 1000000000ULL);
@@ -86,7 +99,7 @@ int clock_gettime(int clk_id, struct worker_timespec *tp) {
 /* time_t is 64-bit here (see the struct comment above) -- this must return
  * long long, not long, or the wasm function signature itself (i64 vs i32
  * return) mismatches what real callers compiled against <time.h> expect. */
-long long time(long long *out) {
+WORKER_WEAK long long time(long long *out) {
   struct worker_timespec ts;
   clock_gettime(WORKER_CLOCK_REALTIME, &ts);
   if (out) {
@@ -103,7 +116,7 @@ long long time(long long *out) {
 __attribute__((import_module("env"), import_name("worker_log_error")))
 extern void worker_log_error(const uint8_t *ptr, size_t len);
 
-long write(int fd, const void *buf, unsigned long count) {
+WORKER_WEAK long write(int fd, const void *buf, unsigned long count) {
   if (fd == 1 || fd == 2) {
     worker_log_error((const uint8_t *)buf, (size_t)count);
     return (long)count;
@@ -123,7 +136,7 @@ struct worker_iovec {
   unsigned long iov_len;
 };
 
-long writev(int fd, const struct worker_iovec *iov, int iovcnt) {
+WORKER_WEAK long writev(int fd, const struct worker_iovec *iov, int iovcnt) {
   if (fd != 1 && fd != 2) {
     return -1;
   }
@@ -135,7 +148,7 @@ long writev(int fd, const struct worker_iovec *iov, int iovcnt) {
   return total;
 }
 
-long readv(int fd, const struct worker_iovec *iov, int iovcnt) {
+WORKER_WEAK long readv(int fd, const struct worker_iovec *iov, int iovcnt) {
   (void)fd;
   (void)iov;
   (void)iovcnt;
@@ -143,7 +156,7 @@ long readv(int fd, const struct worker_iovec *iov, int iovcnt) {
 }
 
 /* Also musl-internal, called by __stdio_seek (traced the same way). */
-long long __lseek(int fd, long long offset, int whence) {
+WORKER_WEAK long long __lseek(int fd, long long offset, int whence) {
   (void)fd;
   (void)offset;
   (void)whence;
@@ -153,7 +166,7 @@ long long __lseek(int fd, long long offset, int whence) {
 /* Called by __stdout_write before it decides whether to go through the
  * line-buffered or fully-buffered path; a Worker is never attached to a
  * real terminal. */
-int __isatty(int fd) {
+WORKER_WEAK int __isatty(int fd) {
   (void)fd;
   return 0;
 }
@@ -163,13 +176,13 @@ int __isatty(int fd) {
  * llvm-nm across every extracted libc.a member; isatty.o only needs
  * fd_fdstat_get alone, already covered by __isatty above). There is no
  * real file descriptor here to query or reconfigure flags on. */
-int fcntl(int fd, int cmd, ...) {
+WORKER_WEAK int fcntl(int fd, int cmd, ...) {
   (void)fd;
   (void)cmd;
   return -1;
 }
 
-int ioctl(int fd, unsigned long request, ...) {
+WORKER_WEAK int ioctl(int fd, unsigned long request, ...) {
   (void)fd;
   (void)request;
   return -1;
@@ -180,14 +193,14 @@ int ioctl(int fd, unsigned long request, ...) {
  * codebase that use them (optional GC/debug config files, self-hosted
  * code caches) already treat "not found" as a normal, handled outcome
  * rather than a hard error. */
-long read(int fd, void *buf, unsigned long count) {
+WORKER_WEAK long read(int fd, void *buf, unsigned long count) {
   (void)fd;
   (void)buf;
   (void)count;
   return 0; /* EOF */
 }
 
-int close(int fd) {
+WORKER_WEAK int close(int fd) {
   (void)fd;
   return -1;
 }
@@ -200,24 +213,34 @@ int close(int fd) {
  * just the one a given call site happens to need, or the object still
  * gets linked for whichever one is left. `RandomNum.cpp`'s
  * `open("/dev/urandom", ...)` is one such direct caller. */
-int open(const char *path, int flags, ...) {
+WORKER_WEAK int open(const char *path, int flags, ...) {
   (void)path;
   (void)flags;
   return -1;
 }
 
-int remove(const char *path) {
+WORKER_WEAK int remove(const char *path) {
   (void)path;
   return -1;
 }
 
-int rmdir(const char *path) {
+WORKER_WEAK int rmdir(const char *path) {
   (void)path;
   return -1;
 }
 
-int unlink(const char *path) {
+WORKER_WEAK int unlink(const char *path) {
   (void)path;
+  return -1;
+}
+
+/* `fstat` is a separate wasi-sysroot translation unit (fstat.o) from
+ * `open`/`remove`/`rmdir`/`unlink`'s posix.o, with its own real
+ * `fd_fdstat_get`-adjacent WASI import; a real file descriptor never
+ * exists here for it to stat. */
+WORKER_WEAK int fstat(int fd, void *buf) {
+  (void)fd;
+  (void)buf;
   return -1;
 }
 
@@ -226,7 +249,7 @@ int unlink(const char *path) {
  * sysroot's fopen.o), which in turn is what actually reaches path_open
  * and the fd_prestat_get/fd_prestat_dir_name preopened-directory
  * resolution machinery. */
-int __wasilibc_open_nomode(const char *path, int oflag) {
+WORKER_WEAK int __wasilibc_open_nomode(const char *path, int oflag) {
   (void)path;
   (void)oflag;
   return -1;
@@ -236,27 +259,32 @@ int __wasilibc_open_nomode(const char *path, int oflag) {
  * is the normal "unset" outcome for `getenv`, which every real call site
  * (GC zeal tuning, MOZ_LOG, locale overrides) already treats as "use the
  * default", not an error. */
-char *getenv(const char *name) {
+WORKER_WEAK char *getenv(const char *name) {
   (void)name;
   return NULL;
 }
 
-int setenv(const char *name, const char *value, int overwrite) {
+WORKER_WEAK int setenv(const char *name, const char *value, int overwrite) {
   (void)name;
   (void)value;
   (void)overwrite;
   return -1;
 }
 
+WORKER_WEAK int unsetenv(const char *name) {
+  (void)name;
+  return -1;
+}
+
 /* ---- process exit: there is no process to exit. A Worker request that
  * hits this has hit an unrecoverable condition; trap immediately rather
  * than pretending an exit-then-continue model exists. */
-__attribute__((noreturn)) void exit(int code) {
+WORKER_WEAK __attribute__((noreturn)) void exit(int code) {
   (void)code;
   __builtin_trap();
 }
 
-__attribute__((noreturn)) void _Exit(int code) {
+WORKER_WEAK __attribute__((noreturn)) void _Exit(int code) {
   (void)code;
   __builtin_trap();
 }

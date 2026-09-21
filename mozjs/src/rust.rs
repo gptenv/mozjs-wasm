@@ -490,9 +490,6 @@ impl ThreadSafeJSContext {
 const ChunkShift: usize = 20;
 const ChunkSize: usize = 1 << ChunkShift;
 
-#[cfg(target_pointer_width = "32")]
-const ChunkLocationOffset: usize = ChunkSize - 2 * 4 - 8;
-
 // ___________________________________________________________________________
 // Wrappers around things in jsglue.cpp
 
