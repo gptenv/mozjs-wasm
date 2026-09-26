@@ -74,6 +74,14 @@ use crate::rooted;
 // From Gecko:
 // Our "default" stack is what we use in configurations where we don't have a compelling reason to
 // do things differently. This is effectively 1MB on 64-bit platforms.
+// The raw Worker target uses a fixed WebAssembly stack. Keep SpiderMonkey's
+// quota well below that limit so deeply recursive page scripts raise a normal
+// JS stack-overflow exception before exhausting the host/WASM stack and
+// unwinding through Servo's borrowed state.
+#[cfg(target_arch = "wasm32")]
+const STACK_QUOTA: usize = 256 * 1024;
+
+#[cfg(not(target_arch = "wasm32"))]
 const STACK_QUOTA: usize = 128 * 8 * 1024;
 
 // From Gecko:
