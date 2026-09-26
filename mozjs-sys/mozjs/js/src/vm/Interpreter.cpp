@@ -61,6 +61,7 @@
 #include "vm/StringType.h"
 #include "vm/ThrowMsgKind.h"     // ThrowMsgKind
 #include "vm/TypeofEqOperand.h"  // TypeofEqOperand
+#include "vm/WorkerScriptBudget.h"
 #ifdef ENABLE_EXPLICIT_RESOURCE_MANAGEMENT
 #  include "vm/UsingHint.h"
 #endif
@@ -494,6 +495,7 @@ MOZ_ALWAYS_INLINE bool CallJSNative(JSContext* cx, Native native,
   cx->check(args);
   MOZ_ASSERT(!args.callee().is<ProxyObject>());
 
+  JS_WORKER_SCRIPT_BUDGET_CHARGE(NativeCall);
   AutoRealm ar(cx, &args.callee());
   bool ok = native(cx, args.length(), args.base());
   if (ok) {
@@ -1833,11 +1835,14 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
    * a CHECK_BRANCH() if n is not positive, which possibly indicates that it
    * is the backedge of a loop.
    */
-#define BRANCH(n)                  \
-  JS_BEGIN_MACRO                   \
-    int32_t nlen = (n);            \
-    if (nlen <= 0) CHECK_BRANCH(); \
-    ADVANCE_AND_DISPATCH(nlen);    \
+#define BRANCH(n)                                \
+  JS_BEGIN_MACRO                                 \
+    int32_t nlen = (n);                          \
+    if (nlen <= 0) {                             \
+      JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(nlen); \
+      CHECK_BRANCH();                            \
+    }                                            \
+    ADVANCE_AND_DISPATCH(nlen);                  \
   JS_END_MACRO
 
   /*
@@ -1959,6 +1964,13 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
   // Increment the coverage for the main entry point.
   INIT_COVERAGE();
   COUNT_COVERAGE_MAIN();
+
+#ifdef SERVO_WORKER_WASM
+  // Scripts the portable baseline interpreter does not enter run here; charge
+  // and check the Worker script budget at frame entry as it does.
+  JS_WORKER_SCRIPT_BUDGET_CHARGE(Call);
+  CHECK_BRANCH();
+#endif
 
   // Enter the interpreter loop starting at the current pc.
   ADVANCE_AND_DISPATCH(0);
@@ -3367,6 +3379,13 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
       // Increment the coverage for the main entry point.
       INIT_COVERAGE();
       COUNT_COVERAGE_MAIN();
+
+#ifdef SERVO_WORKER_WASM
+      // Scripts the portable baseline interpreter does not enter run here;
+      // charge and check the Worker script budget at frame entry as it does.
+      JS_WORKER_SCRIPT_BUDGET_CHARGE(Call);
+      CHECK_BRANCH();
+#endif
 
       /* Load first op and dispatch it (safe since JSOp::RetRval). */
       ADVANCE_AND_DISPATCH(0);

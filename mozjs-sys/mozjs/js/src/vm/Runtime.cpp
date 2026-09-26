@@ -38,6 +38,7 @@
 #include "vm/PromiseObject.h"  // js::PromiseObject
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/Warnings.h"  // js::WarnNumberUC
+#include "vm/WorkerScriptBudget.h"
 #include "wasm/WasmPI.h"
 #include "wasm/WasmSignalHandlers.h"
 
@@ -390,6 +391,26 @@ void JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
 #endif
 }
 
+#ifdef SERVO_WORKER_WASM
+int64_t js::gWorkerScriptBudget = -1;
+uint64_t js::gWorkerScriptBudgetTerminations = 0;
+
+bool js::WorkerScriptBudgetExhausted(JSContext* cx) {
+  cx->requestInterrupt(InterruptReason::CallbackUrgent);
+  return true;
+}
+
+// Called by the Servo Worker port around each host turn. A negative budget
+// disables the limit.
+extern "C" MOZ_EXPORT void mozjs_worker_set_script_budget(int64_t operations) {
+  js::gWorkerScriptBudget = operations;
+}
+
+extern "C" MOZ_EXPORT uint64_t mozjs_worker_script_budget_terminations() {
+  return js::gWorkerScriptBudgetTerminations;
+}
+#endif
+
 static bool InvokeInterruptCallbacks(JSContext* cx) {
   bool stop = false;
   for (JSInterruptCallback cb : cx->interruptCallbacks()) {
@@ -424,6 +445,18 @@ static bool HandleInterrupt(JSContext* cx, bool invokeCallback,
   if (!invokeCallback) {
     return true;
   }
+
+#ifdef SERVO_WORKER_WASM
+  // An exhausted Worker script budget terminates the script without
+  // consulting the embedder, whose callback would shut the script thread
+  // down. Skip the stack-string warning below: building it could reach
+  // another interrupt check while the budget is still exhausted.
+  if (gWorkerScriptBudget == 0) {
+    gWorkerScriptBudgetTerminations++;
+    cx->reportUncatchableException();
+    return false;
+  }
+#endif
 
   // Important: Additional callbacks can occur inside the callback handler
   // if it re-enters the JS engine. The embedding must ensure that the

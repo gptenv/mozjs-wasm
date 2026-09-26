@@ -57,6 +57,7 @@
 #include "vm/PlainObject.h"
 #include "vm/Shape.h"
 #include "vm/TypeofEqOperand.h"  // TypeofEqOperand
+#include "vm/WorkerScriptBudget.h"
 #include "vm/WrapperObject.h"
 
 #include "debugger/DebugAPI-inl.h"
@@ -2387,6 +2388,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             JSNative native = ignoresRv
                                   ? callee->jitInfo()->ignoresReturnValueMethod
                                   : callee->native();
+            JS_WORKER_SCRIPT_BUDGET_CHARGE(NativeCall);
             bool success = native(cx, argc, args);
 
             ctx.stack.fp = trampolinePrevFP;
@@ -4384,6 +4386,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             stubInfo->getStubRawWord(cstub, getterOffset));
         {
           PUSH_IC_FRAME();
+          JS_WORKER_SCRIPT_BUDGET_CHARGE(NativeCall);
           ReservedRooted<JSFunction*> getterRooted(&ctx.state.fun0, getter);
           ReservedRooted<Value> receiverRooted(&ctx.state.value0, receiver);
           ReservedRooted<Value> resultRooted(&ctx.state.value1);
@@ -4413,6 +4416,7 @@ uint64_t ICInterpretOps(uint64_t arg0, uint64_t arg1, ICStub* stub,
             stubInfo->getStubRawWord(cstub, setterOffset));
         {
           PUSH_IC_FRAME();
+          JS_WORKER_SCRIPT_BUDGET_CHARGE(NativeCall);
           ReservedRooted<JSFunction*> setterRooted(&ctx.state.fun0, setter);
           ReservedRooted<JSObject*> receiverRooted(&ctx.state.obj0, receiver);
           ReservedRooted<Value> rhsRooted(&ctx.state.value1, rhs);
@@ -6031,7 +6035,9 @@ PBIResult PortableBaselineInterpret(
   COUNT_COVERAGE_MAIN();
 
 #ifdef ENABLE_INTERRUPT_CHECKS
-  if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+  if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt() ||
+      JS_WORKER_SCRIPT_BUDGET_CALL_EXHAUSTED(
+          ctx.frameMgr.cxForLocalUseOnly())) {
     PUSH_EXIT_FRAME();
     if (!InterruptCheck(cx)) {
       GOTO_ERROR();
@@ -6319,6 +6325,7 @@ PBIResult PortableBaselineInterpret(
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (!result) {
+          JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(jumpOffset);
           ADVANCE(jumpOffset);
           PREDICT_NEXT(JumpTarget);
           PREDICT_NEXT(LoopHead);
@@ -6345,6 +6352,7 @@ PBIResult PortableBaselineInterpret(
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (result) {
+          JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(jumpOffset);
           ADVANCE(jumpOffset);
           PREDICT_NEXT(JumpTarget);
           PREDICT_NEXT(LoopHead);
@@ -6373,6 +6381,7 @@ PBIResult PortableBaselineInterpret(
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (result) {
+          JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(jumpOffset);
           ADVANCE(jumpOffset);
           PREDICT_NEXT(JumpTarget);
           PREDICT_NEXT(LoopHead);
@@ -6401,6 +6410,7 @@ PBIResult PortableBaselineInterpret(
         }
         int32_t jumpOffset = GET_JUMP_OFFSET(pc);
         if (!result) {
+          JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(jumpOffset);
           ADVANCE(jumpOffset);
           PREDICT_NEXT(JumpTarget);
           PREDICT_NEXT(LoopHead);
@@ -7905,7 +7915,9 @@ PBIResult PortableBaselineInterpret(
             }
             // 11. Check for interrupts.
 #ifdef ENABLE_INTERRUPT_CHECKS
-            if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+            if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt() ||
+                JS_WORKER_SCRIPT_BUDGET_CALL_EXHAUSTED(
+                    ctx.frameMgr.cxForLocalUseOnly())) {
               PUSH_EXIT_FRAME();
               if (!InterruptCheck(cx)) {
                 GOTO_ERROR();
@@ -8247,7 +8259,9 @@ PBIResult PortableBaselineInterpret(
         int32_t icIndex = GET_INT32(pc);
         icEntry = icEntries + icIndex;
 #ifdef ENABLE_INTERRUPT_CHECKS
-        if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+        if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt() ||
+            JS_WORKER_SCRIPT_BUDGET_EXHAUSTED(
+                ctx.frameMgr.cxForLocalUseOnly())) {
           PUSH_EXIT_FRAME();
           if (!InterruptCheck(cx)) {
             GOTO_ERROR();
@@ -8279,6 +8293,7 @@ PBIResult PortableBaselineInterpret(
       }
 
       CASE(Goto) {
+        JS_WORKER_SCRIPT_BUDGET_CHARGE_JUMP(GET_JUMP_OFFSET(pc));
         ADVANCE(GET_JUMP_OFFSET(pc));
         PREDICT_NEXT(JumpTarget);
         PREDICT_NEXT(LoopHead);
@@ -8521,7 +8536,9 @@ PBIResult PortableBaselineInterpret(
 
       CASE(Finally) {
 #ifdef ENABLE_INTERRUPT_CHECKS
-        if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt()) {
+        if (ctx.frameMgr.cxForLocalUseOnly()->hasAnyPendingInterrupt() ||
+            JS_WORKER_SCRIPT_BUDGET_EXHAUSTED(
+                ctx.frameMgr.cxForLocalUseOnly())) {
           PUSH_EXIT_FRAME();
           if (!InterruptCheck(cx)) {
             GOTO_ERROR();

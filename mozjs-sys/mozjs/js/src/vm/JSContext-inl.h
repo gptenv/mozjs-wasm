@@ -16,6 +16,7 @@
 #include "vm/BigIntType.h"
 #include "vm/GlobalObject.h"
 #include "vm/Realm.h"
+#include "vm/WorkerScriptBudget.h"
 
 #include "gc/Allocator-inl.h"
 #include "vm/Activation-inl.h"  // js::Activation::hasWasmExitFP
@@ -271,7 +272,8 @@ MOZ_ALWAYS_INLINE bool CheckForInterrupt(JSContext* cx) {
   MOZ_ASSERT(!cx->isExceptionPending());
   // Add an inline fast-path since we have to check for interrupts in some hot
   // C++ loops of library builtins.
-  if (MOZ_UNLIKELY(cx->hasAnyPendingInterrupt())) {
+  if (MOZ_UNLIKELY(cx->hasAnyPendingInterrupt() ||
+                   JS_WORKER_SCRIPT_BUDGET_EXHAUSTED(cx))) {
     return cx->handleInterrupt();
   }
 

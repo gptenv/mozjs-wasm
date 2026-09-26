@@ -39,6 +39,7 @@
 #include "vm/MutexIDs.h"
 #include "vm/NativeObject.h"
 #include "vm/RegExpShared.h"
+#include "vm/WorkerScriptBudget.h"
 
 // Forward declaration of classes
 namespace js::jit {
@@ -1561,7 +1562,8 @@ class StackLimitCheck {
 
   // Use this to check for interrupt request in C++ code.
   bool InterruptRequested() {
-    return cx_->hasPendingInterrupt(js::InterruptReason::CallbackUrgent);
+    return cx_->hasPendingInterrupt(js::InterruptReason::CallbackUrgent) ||
+           JS_WORKER_SCRIPT_BUDGET_EXHAUSTED(cx_);
   }
 
   // Use this to check for stack-overflow when entering runtime from JS code.
