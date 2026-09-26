@@ -79,7 +79,7 @@ use crate::rooted;
 // JS stack-overflow exception before exhausting the host/WASM stack and
 // unwinding through Servo's borrowed state.
 #[cfg(target_arch = "wasm32")]
-const STACK_QUOTA: usize = 208 * 1024;
+const STACK_QUOTA: usize = 200 * 1024;
 
 #[cfg(not(target_arch = "wasm32"))]
 const STACK_QUOTA: usize = 128 * 8 * 1024;
