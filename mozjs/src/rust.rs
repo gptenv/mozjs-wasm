@@ -79,7 +79,7 @@ use crate::rooted;
 // JS stack-overflow exception before exhausting the host/WASM stack and
 // unwinding through Servo's borrowed state.
 #[cfg(target_arch = "wasm32")]
-const STACK_QUOTA: usize = 256 * 1024;
+const STACK_QUOTA: usize = 64 * 1024;
 
 #[cfg(not(target_arch = "wasm32"))]
 const STACK_QUOTA: usize = 128 * 8 * 1024;
@@ -109,9 +109,17 @@ const STACK_QUOTA: usize = 128 * 8 * 1024;
 // We tune the trusted/untrusted quotas for each configuration to achieve our
 // invariants while attempting to minimize overhead. In contrast, our buffer
 // between system code and trusted script is a very unscientific 10k.
+#[cfg(target_arch = "wasm32")]
+const SYSTEM_CODE_BUFFER: usize = 4 * 1024;
+
+#[cfg(not(target_arch = "wasm32"))]
 const SYSTEM_CODE_BUFFER: usize = 10 * 1024;
 
 // Gecko's value on 64-bit.
+#[cfg(target_arch = "wasm32")]
+const TRUSTED_SCRIPT_BUFFER: usize = 8 * 1024;
+
+#[cfg(not(target_arch = "wasm32"))]
 const TRUSTED_SCRIPT_BUFFER: usize = 8 * 12800;
 
 trait ToResult {
