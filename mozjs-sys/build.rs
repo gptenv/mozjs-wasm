@@ -29,6 +29,8 @@ const ENV_VARS: &'static [&'static str] = &[
     "MOZJS_FROM_SOURCE",
     "PYTHON",
     "STLPORT_LIBS",
+    "SERVO_WASI_SDK_DIR",
+    "WASI_SYSROOT",
 ];
 
 // For `cc-rs`, `TARGET_XX` variables override non prefixed variables,
@@ -400,7 +402,17 @@ fn build_bindings(build_dir: &Path, target: BuildTarget) {
         // libclang reports SpiderMonkey's wasm declarations as hidden by
         // default. Bindgen skips hidden free functions, even when Clang can
         // parse them, so expose the declarations during binding generation.
-        builder = builder.clang_arg("-fvisibility=default");
+        let include = worker_wasi_include_dirs();
+        builder = builder
+            .clang_arg("-fvisibility=default")
+            // wasi-sdk 29 stores libc++ and wasi-libc headers under the
+            // target triple. `cc`'s compiler args below still contain the
+            // legacy generic `/usr/share/wasi-sysroot/include/c++/v1` paths;
+            // libclang needs the actual target-specific directories as well.
+            .clang_arg("-isystem")
+            .clang_arg(include.cpp.display().to_string())
+            .clang_arg("-isystem")
+            .clang_arg(include.c.display().to_string());
     }
 
     let compiler = cc_rs_builder.get_compiler();
@@ -817,12 +829,13 @@ fn get_common_cc(build_dir: &Path, target: BuildTarget) -> cc::Build {
         // build supplies these paths through makefile.cargo; add the same
         // C++ standard-library and freestanding C headers to the small Rust
         // FFI translation units compiled by cc-rs.
+        let include = worker_wasi_include_dirs();
         builder
             .define("SERVO_WORKER_WASM", None)
             .cpp_link_stdlib(None)
             .include(Path::new("mozjs/build/worker-include"))
-            .include("/usr/share/wasi-sysroot/include/c++/v1")
-            .include("/usr/share/wasi-sysroot/include");
+            .include(include.cpp)
+            .include(include.c);
     }
 
     if target_triple == "wasm32-unknown-unknown" {
@@ -881,6 +894,32 @@ fn wasi_sdk() -> Option<OsString> {
         get_cc_rs_env_os("WASI_SDK_PATH")
     } else {
         None
+    }
+}
+
+struct WorkerWasiIncludeDirs {
+    cpp: PathBuf,
+    c: PathBuf,
+}
+
+fn worker_wasi_include_dirs() -> WorkerWasiIncludeDirs {
+    let sysroot = env::var_os("SERVO_WASI_SDK_DIR")
+        .map(|sdk| PathBuf::from(sdk).join("share/wasi-sysroot"))
+        .or_else(|| env::var_os("WASI_SYSROOT").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("/usr/share/wasi-sysroot"));
+    let target_include = sysroot.join("include/wasm32-wasi");
+    let cpp = target_include.join("c++/v1");
+    if cpp.is_dir() && target_include.is_dir() {
+        WorkerWasiIncludeDirs {
+            cpp,
+            c: target_include,
+        }
+    } else {
+        // Keep working with SDKs that install headers in the generic layout.
+        WorkerWasiIncludeDirs {
+            cpp: sysroot.join("include/c++/v1"),
+            c: sysroot.join("include"),
+        }
     }
 }
 
