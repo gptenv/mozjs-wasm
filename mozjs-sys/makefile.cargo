@@ -131,6 +131,9 @@ ifneq ($(HOST),$(TARGET))
         HOST_CC = clang
         HOST_CXX = clang++
         LDFLAGS += -nostdlib -Wl,--no-entry
+        # The portable baseline interpreter re-enters WASM for nested JS
+        # calls. Keep its frames small enough for browser Worker stacks;
+        # an unoptimized interpreter overflows on bundled application JS.
         CONFIGURE_FLAGS += \
             --enable-portable-baseline-interp \
             --enable-portable-baseline-interp-force \
@@ -138,7 +141,7 @@ ifneq ($(HOST),$(TARGET))
             --disable-jit \
             --disable-shared-memory \
             --disable-hardening \
-            --disable-optimize \
+            --enable-optimize=-O1 \
             --without-intl-api \
             $(NULL)
     endif
