@@ -14,6 +14,7 @@ use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 use std::collections::vec_deque::VecDeque;
 use std::collections::{HashMap, HashSet};
+use std::ffi::c_char;
 use std::hash::{BuildHasher, Hash};
 use std::num::{
     NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize, NonZeroU128,
@@ -24,16 +25,20 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 extern "C" {
-    fn CallBigIntTracer(trc: *mut JSTracer, value: *mut Heap<*mut BigInt>, name: *const i8);
-    fn CallFunctionTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSFunction>, name: *const i8);
-    fn CallIdTracer(trc: *mut JSTracer, value: *mut Heap<jsid>, name: *const i8);
-    fn CallObjectTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSObject>, name: *const i8);
+    fn CallBigIntTracer(trc: *mut JSTracer, value: *mut Heap<*mut BigInt>, name: *const c_char);
+    fn CallFunctionTracer(
+        trc: *mut JSTracer,
+        value: *mut Heap<*mut JSFunction>,
+        name: *const c_char,
+    );
+    fn CallIdTracer(trc: *mut JSTracer, value: *mut Heap<jsid>, name: *const c_char);
+    fn CallObjectTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSObject>, name: *const c_char);
     fn CallPropertyDescriptorTracer(trc: *mut JSTracer, value: *mut PropertyDescriptor);
-    fn CallScriptTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSScript>, name: *const i8);
-    fn CallStringTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSString>, name: *const i8);
-    fn CallSymbolTracer(trc: *mut JSTracer, value: *mut Heap<*mut Symbol>, name: *const i8);
-    fn CallValueRootTracer(trc: *mut JSTracer, value: *mut Value, name: *const i8);
-    fn CallValueTracer(trc: *mut JSTracer, value: *mut Heap<Value>, name: *const i8);
+    fn CallScriptTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSScript>, name: *const c_char);
+    fn CallStringTracer(trc: *mut JSTracer, value: *mut Heap<*mut JSString>, name: *const c_char);
+    fn CallSymbolTracer(trc: *mut JSTracer, value: *mut Heap<*mut Symbol>, name: *const c_char);
+    fn CallValueRootTracer(trc: *mut JSTracer, value: *mut Value, name: *const c_char);
+    fn CallValueTracer(trc: *mut JSTracer, value: *mut Heap<Value>, name: *const c_char);
     fn Servo_js_TraceValueArray(trc: *mut JSTracer, length: usize, values: *mut Value);
 }
 use std::sync::atomic::{
