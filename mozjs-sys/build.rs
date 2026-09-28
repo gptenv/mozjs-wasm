@@ -548,6 +548,10 @@ fn worker_libc_trimmed_objects_to_remove() -> &'static [&'static str] {
         "writev.o",
         "readv.o",
         "lseek.o",
+        // wasi-sdk 29 combines close() and __wasilibc_fd_renumber() in one
+        // object; close() is supplied by worker_libc_shim.c, while this
+        // archive object's close() imports wasi_snapshot_preview1.fd_close.
+        "__wasilibc_fd_renumber.o",
         "isatty.o",
         "fcntl.o",
         "ioctl.o",
